@@ -2,7 +2,9 @@ package main
 
 import (
 	"fmt"
-	// "github.com/gofiber/fiber/v2"
+	"os"
+	"log"
+	"github.com/gofiber/fiber/v2"
 )
 
 // TODO
@@ -36,12 +38,23 @@ func main() {
 		go queryAndStoreRoutine(i, urlJob, &dbContext)
 	}
 
-	select {}
-	// app := fiber.New()
+	app := fiber.New()
 
-	// app.Get("/", func(c *fiber.Ctx) error {
-	// 	return c.SendString("Hello, World 👋!")
-	// })
+	app.Get("/data/:url/:from/:to?/", func(c *fiber.Ctx) error {
+		k := c.Params("url")
+		fmt.Println(k)
+		err := c.SendFile("test.txt")
+		if err != nil {
+			panic(err)
+		}
+		return nil
+	})
 
-	// app.Listen(":3000")
+	app.Get("/kill", func(c *fiber.Ctx) error {
+		log.Println("Kill requested")
+		os.Exit(0)
+		return nil
+	})
+
+	app.Listen(":3000")
 }
