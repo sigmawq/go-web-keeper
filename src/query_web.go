@@ -2,12 +2,14 @@ package main
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	_ "github.com/mattn/go-sqlite3"
-	"strconv"
-	"time"
-	"encoding/json"
+	"log"
 	"os"
+	"strconv"
+	"sync"
+	"time"
 )
 
 type Config struct {
@@ -15,12 +17,12 @@ type Config struct {
 }
 
 type UrlJob struct {
-	Url string
+	Url                string
 	QueryPeriodSeconds int `json:"query_period_seconds"`
 	RetryPeriodSeconds int `json:"retry_period_seconds"`
 }
 
-func initialize(connectionString string) (Config, error) {
+func initialize(connectionString string) (Config, DbContext, error) {
 	query := `CREATE TABLE IF NOT EXISTS web_pages_data (
 		id INTEGER NOT NULL PRIMARY KEY, 
 		url TEXT NOT NULL,
@@ -28,6 +30,8 @@ func initialize(connectionString string) (Config, error) {
 		timestamp INTEGER NOT NULL);`
 
 	db, err := sql.Open("sqlite3", connectionString)
+
+	// TODO: replace panics
 
 	if err != nil {
 		panic(err)
@@ -58,8 +62,21 @@ func initialize(connectionString string) (Config, error) {
 
 	jobsToDelete := make([]int, 0, 12)
 	for i, urlJob := range config.UrlJobs {
+		valid := true
 		if urlJob.Url == "" {
 			fmt.Printf("URL job %v has no URL specified and will be ignored\n", i)
+			valid = false
+		}
+		if urlJob.QueryPeriodSeconds <= 0 {
+			fmt.Printf("URL job %v has invalid or absent query_period_seconds and will be ignored (minimum value is 1 second)\n", i)
+			valid = false
+		}
+		if urlJob.RetryPeriodSeconds <= 0 {
+			fmt.Printf("URL job %v has invalid or absent retry_period_seconds and will be ignored (minimum value is 1 second)\n", i)
+			valid = false
+		}
+
+		if !valid {
 			jobsToDelete = append(jobsToDelete, i)
 		}
 	}
@@ -68,10 +85,33 @@ func initialize(connectionString string) (Config, error) {
 		config.UrlJobs = append(config.UrlJobs[:i], config.UrlJobs[i+1:]...)
 	}
 
-	return config, nil
+	var dbContext DbContext
+	dbContext.ConnectionString = connectionString
+
+	return config, dbContext, nil
 }
 
-func queryAndSaveWebUrl(url string, dbConnectionString string) error {
+func queryAndStoreRoutine(urlJobId int, urlJob UrlJob, dbContext *DbContext) {
+	log.Printf("[Job ID: %v | URL: %v]: Start", urlJobId, urlJob.Url) // here
+	for {
+		log.Printf("[Job ID: %v | URL: %v]: Performing request..", urlJobId, urlJob.Url) // here
+		err := queryAndSaveWebUrl(urlJob.Url, dbContext)
+		if err != nil {
+			log.Printf("[Job ID: %v | URL: %v]: Requesting URL failed: %v", urlJobId, urlJob.Url, err) // here
+			time.Sleep(time.Duration(urlJob.RetryPeriodSeconds) * time.Second)	
+		} else {
+			log.Printf("[Job ID: %v | URL: %v]: Requested parsed and saved succesfully", urlJobId, urlJob.Url)
+			time.Sleep(time.Duration(urlJob.QueryPeriodSeconds) * time.Second)	
+		}
+	}
+}
+
+type DbContext struct {
+	ConnectionString string
+	Mut              sync.Mutex
+}
+
+func queryAndSaveWebUrl(url string, dbContext *DbContext) error {
 	text, err := httpGet(url)
 	if err != nil {
 		return err
@@ -79,7 +119,10 @@ func queryAndSaveWebUrl(url string, dbConnectionString string) error {
 
 	query := `INSERT INTO web_pages_data (url, data, timestamp)
 		VALUES (?, ?, ?);`
-	db, err := sql.Open("sqlite3", dbConnectionString)
+
+	dbContext.Mut.Lock()
+	defer dbContext.Mut.Unlock()
+	db, err := sql.Open("sqlite3", dbContext.ConnectionString)
 	if err != nil {
 		return err
 	}
