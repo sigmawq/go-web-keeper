@@ -1,0 +1,20 @@
+{
+ 	"build_systems":
+	    [
+	        {
+	            "name": "Run",
+	            "working_dir": "$project_path",
+	            "shell_cmd": "go build -o $project_path/build/web-keeper.exe $project_path/src/. && $project_path/build/web-keeper.exe",
+	        },
+	        {
+	            "name": "Build",
+	            "working_dir": "$project_path",
+	            "shell_cmd": "go build -o $project_path/build/web-keeper.exe $project_path/src/.",
+	        },
+	        {
+	            "name": "Format",
+	            "working_dir": "$project_path",
+	            "shell_cmd": "go fmt $project_path/src/.",
+	        },
+	],
+}
