@@ -60,12 +60,12 @@ func initialize(connectionString string) (Config, DbContext, error) {
 		panic(err)
 	}
 
-	jobsToDelete := make([]int, 0, 12)
+	validJobs := make([]UrlJob, 0, 12)
 	for i, urlJob := range config.UrlJobs {
 		valid := true
 		if urlJob.Url == "" {
-			fmt.Printf("URL job %v has no URL specified and will be ignored\n", i)
-			valid = false
+			fmt.Printf("URL job %v has an empty or missing URL and will ignored.\n", i)
+			valid = false	
 		}
 		if urlJob.QueryPeriodSeconds <= 0 {
 			fmt.Printf("URL job %v has invalid or absent query_period_seconds and will be ignored (minimum value is 1 second)\n", i)
@@ -76,14 +76,12 @@ func initialize(connectionString string) (Config, DbContext, error) {
 			valid = false
 		}
 
-		if !valid {
-			jobsToDelete = append(jobsToDelete, i)
+		if valid {
+			validJobs = append(validJobs, urlJob)
 		}
 	}
 
-	for _, i := range jobsToDelete {
-		config.UrlJobs = append(config.UrlJobs[:i], config.UrlJobs[i+1:]...)
-	}
+	config.UrlJobs = validJobs
 
 	var dbContext DbContext
 	dbContext.ConnectionString = connectionString
@@ -98,10 +96,10 @@ func queryAndStoreRoutine(urlJobId int, urlJob UrlJob, dbContext *DbContext) {
 		err := queryAndSaveWebUrl(urlJob.Url, dbContext)
 		if err != nil {
 			log.Printf("[Job ID: %v | URL: %v]: Requesting URL failed: %v", urlJobId, urlJob.Url, err) // here
-			time.Sleep(time.Duration(urlJob.RetryPeriodSeconds) * time.Second)	
+			time.Sleep(time.Duration(urlJob.RetryPeriodSeconds) * time.Second)
 		} else {
 			log.Printf("[Job ID: %v | URL: %v]: Requested parsed and saved succesfully", urlJobId, urlJob.Url)
-			time.Sleep(time.Duration(urlJob.QueryPeriodSeconds) * time.Second)	
+			time.Sleep(time.Duration(urlJob.QueryPeriodSeconds) * time.Second)
 		}
 	}
 }

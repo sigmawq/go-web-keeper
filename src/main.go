@@ -2,9 +2,11 @@ package main
 
 import (
 	"fmt"
-	"os"
-	"log"
 	"github.com/gofiber/fiber/v2"
+	"log"
+	"os"
+	"time"
+	"strings"
 )
 
 // TODO
@@ -40,10 +42,63 @@ func main() {
 
 	app := fiber.New()
 
-	app.Get("/data/:url/:from/:to?/", func(c *fiber.Ctx) error {
-		k := c.Params("url")
-		fmt.Println(k)
-		err := c.SendFile("test.txt")
+	app.Get("/data/:protocol/:domain/:from/:to", func(c *fiber.Ctx) error {
+		log.Println("Request incoming")
+
+		protocol := c.Params("protocol")
+		domain := c.Params("url")
+		url := protocol + "://" + domain
+		from := c.Params("from")
+		to := c.Params("to")
+		var argsPresent bool
+		if url == "" || from == "" || to == "" {
+			argsPresent = false
+		} else {
+			argsPresent = true
+		}
+
+		from = strings.ReplaceAll(from, "_", " ")
+		to = strings.ReplaceAll(to, "_", " ")
+
+		if argsPresent {
+			correctArgs := true
+
+			layout := time.ANSIC
+			fromVal, err := time.Parse(layout, from)
+			if err != nil {
+				log.Printf("Incorrect \"from\" argument: %v. Error: %v ", from, err)
+				correctArgs = false
+			}
+			toVal, err := time.Parse(layout, to)
+			if err != nil {
+				log.Printf("Incorrect \"to\" argument: %v. Error: %v ", to, err)
+				correctArgs = false
+			}
+
+			if correctArgs {
+				pages, err := queryUrlDataInRange(&dbContext, url, fromVal, toVal)
+				if err == nil {
+					buf, err := zipifyPages(pages)
+					if err == nil {
+						c.Send(buf)
+						log.Printf("Sent %v bytes to the user: %v", len(buf))
+					} else {
+						log.Printf("Zipping failed: %v", err)
+						c.SendStatus(500)	
+					}		
+				} else {
+					log.Printf("Data query failed: %v", err)
+					return c.SendStatus(500)
+				}
+			} else {
+				log.Printf("User provided incorrect arguments")
+				return c.SendStatus(400)
+			}
+		} else {
+			log.Printf("User didn't provide required arguments")
+			return c.SendStatus(400)
+		}
+
 		if err != nil {
 			panic(err)
 		}
