@@ -46,8 +46,8 @@ func main() {
 		log.Println("Request incoming")
 
 		protocol := c.Params("protocol")
-		domain := c.Params("url")
-		url := protocol + "://" + domain
+		domain := c.Params("domain")
+		url := fmt.Sprintf("%v://%v", protocol, domain)
 		from := c.Params("from")
 		to := c.Params("to")
 		var argsPresent bool
@@ -74,6 +74,7 @@ func main() {
 				log.Printf("Incorrect \"to\" argument: %v. Error: %v ", to, err)
 				correctArgs = false
 			}
+			log.Printf("Request: %v from %v (%v) to %v (%v)", url, fromVal.UTC(), fromVal.UTC().UnixNano(),  toVal.UTC(), toVal.UTC().UnixNano())
 
 			if correctArgs {
 				pages, err := queryUrlDataInRange(&dbContext, url, fromVal, toVal)
@@ -81,7 +82,7 @@ func main() {
 					buf, err := zipifyPages(pages)
 					if err == nil {
 						c.Send(buf)
-						log.Printf("Sent %v bytes to the user: %v", len(buf))
+						log.Printf("Sent %v bytes to the user", len(buf))
 					} else {
 						log.Printf("Zipping failed: %v", err)
 						c.SendStatus(500)	

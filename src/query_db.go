@@ -4,11 +4,13 @@ import (
 	"database/sql"
 	_ "github.com/mattn/go-sqlite3"
 	"time"
-	"bufio"
+	// "bufio"
 	"archive/zip"
 	"bytes"
 	"net/url"
+	"strconv"
 	"fmt"
+	// "log"
 )
 
 type PageData struct {
@@ -22,8 +24,8 @@ func queryUrlDataInRange(dbContext *DbContext, url string, from time.Time, to ti
 	dbContext.Mut.Lock()
 	defer dbContext.Mut.Unlock()
 
-	query := ` SELECT * from web_pages_data
-	WHERE web_pages_data.url = "?" AND timestamp >= ? AND timestamp <= ?`
+	query := `SELECT * from web_pages_data
+	WHERE url = ? AND timestamp >= ? AND timestamp <= ?`
 
 	db, err := sql.Open("sqlite3", dbContext.ConnectionString)
 	defer db.Close()
@@ -31,9 +33,9 @@ func queryUrlDataInRange(dbContext *DbContext, url string, from time.Time, to ti
 	stmt, err := db.Prepare(query)
 	if err != nil {
 		return nil, err
-	}
+	}	
 
-	rows, err := stmt.Query(url, from, to)
+	rows, err := stmt.Query(url, strconv.FormatInt(from.UTC().UnixNano(), 10), strconv.FormatInt(to.UTC().UnixNano(), 10))
 	if err != nil {
 		return nil, err
 	}
@@ -53,24 +55,31 @@ func queryUrlDataInRange(dbContext *DbContext, url string, from time.Time, to ti
 }
 
 func zipifyPages(pagesData []PageData) ([]byte, error) {
-	buf := make([]byte, 0, 4096)
-	buffer := bytes.NewBuffer(buf)
-	writer := bufio.NewWriter(buffer)
-	zipf := zip.NewWriter(writer)
+	buffer := new(bytes.Buffer)
+	zipf := zip.NewWriter(buffer)
 
 	for i, pageData := range pagesData {
 		refinedUrl, err := url.Parse(pageData.Url)
 		if err != nil {
 			return nil, err
 		}
-		name := fmt.Sprintf("%v_%v%v_%v", i, pageData.Timestamp, refinedUrl.Hostname(), refinedUrl.Path) // <idx>_<hostname><path>_<timestamp>
-		w, err := zipf.Create(name)
+		name := fmt.Sprintf("%v_%v%v_%v.zip", i, pageData.Timestamp, refinedUrl.Hostname(), refinedUrl.Path) // <idx>_<hostname><path>_<timestamp>
+		zipfInternalWriter, err := zipf.Create(name)
 		if err != nil {
 			return nil, err
 		}
 
-		w.Write([]byte(pageData.Data))
+		zipfInternal := zip.NewWriter(zipfInternalWriter)
+		htmlWriter, err := zipfInternal.Create("index.html")
+		if err != nil {
+			return nil, err
+		}
+		htmlWriter.Write([]byte(pageData.Data))
+
+		zipfInternal.Close()
 	} 
 
-	return buf, nil
+	zipf.Close()
+
+	return buffer.Bytes(), nil
 }
