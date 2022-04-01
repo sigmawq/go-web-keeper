@@ -5,8 +5,8 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"log"
 	"os"
-	"time"
 	"strings"
+	"time"
 )
 
 // TODO
@@ -14,6 +14,12 @@ import (
 // 2. Scripts
 // 3. HTTP server to serve thing
 // 4. Database for scripts and image loading
+
+// NOTE which tags to parse and extract links
+// <img> for images
+// <link> for linked CSS
+// <script> for scripts
+// ...
 
 func main() {
 	fmt.Println("Web Keeper.")
@@ -30,7 +36,6 @@ func main() {
 		fmt.Printf("%v. %v (%vs/%vs)\n", i, urlJob.Url, urlJob.QueryPeriodSeconds, urlJob.RetryPeriodSeconds)
 	}
 
-	err = queryAndSaveWebUrl("http://google.com", &dbContext)
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -74,7 +79,7 @@ func main() {
 				log.Printf("Incorrect \"to\" argument: %v. Error: %v ", to, err)
 				correctArgs = false
 			}
-			log.Printf("Request: %v from %v (%v) to %v (%v)", url, fromVal.UTC(), fromVal.UTC().UnixNano(),  toVal.UTC(), toVal.UTC().UnixNano())
+			log.Printf("Request: %v from %v (%v) to %v (%v)", url, fromVal.UTC(), fromVal.UTC().UnixNano(), toVal.UTC(), toVal.UTC().UnixNano())
 
 			if correctArgs {
 				pages, err := queryUrlDataInRange(&dbContext, url, fromVal, toVal)
@@ -85,8 +90,8 @@ func main() {
 						log.Printf("Sent %v bytes to the user", len(buf))
 					} else {
 						log.Printf("Zipping failed: %v", err)
-						c.SendStatus(500)	
-					}		
+						c.SendStatus(500)
+					}
 				} else {
 					log.Printf("Data query failed: %v", err)
 					return c.SendStatus(500)

@@ -7,35 +7,36 @@ import (
 	// "bufio"
 	"archive/zip"
 	"bytes"
+	"fmt"
 	"net/url"
 	"strconv"
-	"fmt"
 	// "log"
 )
 
 type PageData struct {
-	Id int
-	Url string
-	Data string
+	Id        int
+	Data      string
 	Timestamp int
+	Url       string
+	Media     []Media // TODO: Query media indicies first and then make a final pass to query media data. This will help avoid copies
+}
+
+type Media struct {
+	Name string
+	Data []byte
 }
 
 func queryUrlDataInRange(dbContext *DbContext, url string, from time.Time, to time.Time) ([]PageData, error) {
 	dbContext.Mut.Lock()
 	defer dbContext.Mut.Unlock()
 
-	query := `SELECT * from web_pages_data
-	WHERE url = ? AND timestamp >= ? AND timestamp <= ?`
-
 	db, err := sql.Open("sqlite3", dbContext.ConnectionString)
 	defer db.Close()
 
-	stmt, err := db.Prepare(query)
-	if err != nil {
-		return nil, err
-	}	
-
-	rows, err := stmt.Query(url, strconv.FormatInt(from.UTC().UnixNano(), 10), strconv.FormatInt(to.UTC().UnixNano(), 10))
+	query := `select page_id, data, timestamp from web_pages_data
+		inner join web_pages on web_pages_data.page_id = web_pages.id
+		where web_pages.url = ? and timestamp > ? and timestamp < ?`
+	rows, err := db.Query(query, url, strconv.FormatInt(from.UTC().UnixNano(), 10), strconv.FormatInt(to.UTC().UnixNano(), 10))
 	if err != nil {
 		return nil, err
 	}
@@ -44,10 +45,31 @@ func queryUrlDataInRange(dbContext *DbContext, url string, from time.Time, to ti
 	i := 0
 	for rows.Next() {
 		pages = append(pages, PageData{})
-		err := rows.Scan(&pages[i].Id, &pages[i].Url, &pages[i].Data, &pages[i].Timestamp)
+		page := &pages[i]
+		pages[i].Url = url
+		err := rows.Scan(&page.Id, &page.Data, &page.Timestamp)
 		if err != nil {
 			return nil, err
 		}
+
+		query := `SELECT name, data FROM media
+			INNER JOIN media_web_pages ON media_web_pages.media_id = media.id
+			WHERE media_web_pages.web_page_id = ?`
+		rows2, err := db.Query(query, pages[i].Id)
+		if err != nil {
+			return nil, err
+		}
+
+		k := 0
+		for rows2.Next() {
+
+			pages[i].Media = append(pages[i].Media, Media{})
+			media := &pages[i].Media[k]
+			rows2.Scan(&media.Name, &media.Data)
+
+			k += 1
+		}
+
 		i += 1
 	}
 
@@ -76,8 +98,19 @@ func zipifyPages(pagesData []PageData) ([]byte, error) {
 		}
 		htmlWriter.Write([]byte(pageData.Data))
 
+		// fmt.Printf("A: %v\n", pageData)
+
+		for _, media := range pageData.Media {
+			fmt.Println(media.Name)
+			fileWriter, err := zipfInternal.Create(media.Name)
+			if err != nil {
+				return nil, err
+			}
+			fileWriter.Write(media.Data)
+		}
+
 		zipfInternal.Close()
-	} 
+	}
 
 	zipf.Close()
 
