@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -10,7 +11,6 @@ import (
 	"log"
 	"net/url"
 	"os"
-	"path"
 	"strconv"
 	"strings"
 	"sync"
@@ -27,6 +27,22 @@ type UrlJob struct {
 	QueryPeriodSeconds int `json:"query_period_seconds"`
 	RetryPeriodSeconds int `json:"retry_period_seconds"`
 }
+
+type NameGenerator struct {
+	Counter int
+	Lock    sync.Mutex
+}
+
+func (n *NameGenerator) Get() string {
+	n.Lock.Lock()
+	next := fmt.Sprintf("%v", n.Counter)
+	n.Counter += 1
+	n.Lock.Unlock()
+
+	return next
+}
+
+var nameGenerator = NameGenerator{}
 
 func initialize(connectionString string) (Config, DbContext, error) {
 	data, err := os.ReadFile("config.json")
@@ -102,6 +118,7 @@ func initialize(connectionString string) (Config, DbContext, error) {
 	media := `CREATE TABLE IF NOT EXISTS media (
 		id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
 		name TEXT NOT NULL,
+		hash TEXT NOT NULL,
 		data TEXT NOT NULL);`
 	runRawQuery(db, media)
 
@@ -136,7 +153,46 @@ type DbContext struct {
 	Mut              sync.Mutex
 }
 
-func parseHtml(node *html.Node, rootUrl string, pageId int, db *sql.DB) error {
+func insertMedia(name string, data []byte, db *sql.DB) (int, error) {
+	hash := sha256.Sum256(data)
+	hash_ := make([]byte, 0, len(hash))
+	for _, v := range hash {
+		hash_ = append(hash_, v)
+	}
+
+	query := `select id from media where hash = ?`
+	row := db.QueryRow(query, hash_)
+
+	var mediaId int
+	err := row.Scan(&mediaId)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			query := `insert into media (name, hash, data) values (?, ?, ?)`
+			_, err := db.Exec(query, name, hash_, data)
+			if err != nil {
+				return 0, err
+			}
+
+			mediaId, err := getLastAutoincrementIndex(db)
+			if err != nil {
+				panic(err)
+			}
+
+			return mediaId, nil
+		} else {
+			return 0, err
+		}
+	} else {
+		return mediaId, nil
+	}
+}
+
+type MediaPage struct {
+	MediaId int
+	PageId  int
+}
+
+func parseHtml(node *html.Node, rootUrl string, pageId int, db *sql.DB, alreadyRelated map[MediaPage]bool) error {
 	if node.Type == html.ElementNode {
 		if node.Data == "img" || node.Data == "script" {
 			for attr_i, attr := range node.Attr {
@@ -153,25 +209,24 @@ func parseHtml(node *html.Node, rootUrl string, pageId int, db *sql.DB) error {
 					data, err := httpGet(mediaUrl)
 					if err == nil {
 
-						filename := path.Base(mediaUrl)
+						filename := nameGenerator.Get()
 						node.Attr[attr_i].Val = filename
 
-						query := `INSERT INTO media (name, data) VALUES (?, ?)`
-						_, err := db.Exec(query, filename, data)
+						mediaId, err := insertMedia(filename, []byte(data), db)
 						if err != nil {
 							return err
 						}
 
-						mediaId, err := getLastAutoincrementIndex(db)
-						if err != nil {
-							return err
-						}
+						_, ok := alreadyRelated[MediaPage{mediaId, pageId}]
+						if !ok {
+							query := `INSERT INTO media_web_pages (media_id, web_page_id) VALUES (?, ?)`
+							_, err = db.Exec(query, mediaId, pageId)
+							if err != nil {
+								fmt.Println(err)
+								return err
+							}
 
-						query = `INSERT INTO media_web_pages (media_id, web_page_id) VALUES (?, ?)`
-						_, err = db.Exec(query, mediaId, pageId)
-						if err != nil {
-							fmt.Println(err)
-							return err
+							alreadyRelated[MediaPage{mediaId, pageId}] = true
 						}
 					} else {
 						log.Printf("Failed to get %v. Node will be left unparsed", mediaUrl)
@@ -185,7 +240,7 @@ func parseHtml(node *html.Node, rootUrl string, pageId int, db *sql.DB) error {
 	}
 
 	for c := node.FirstChild; c != nil; c = c.NextSibling {
-		err := parseHtml(c, rootUrl, pageId, db)
+		err := parseHtml(c, rootUrl, pageId, db, alreadyRelated)
 		if err != nil {
 			return err
 		}
@@ -228,7 +283,8 @@ func queryAndSaveWebUrl(urlString string, dbContext *DbContext) error {
 		panic(err)
 	}
 
-	err = parseHtml(root, rootUrl, pageId, db)
+	alreadyRelated := make(map[MediaPage]bool)
+	err = parseHtml(root, rootUrl, pageId, db, alreadyRelated)
 	if err != nil {
 		return err
 	}

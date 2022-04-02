@@ -85,34 +85,51 @@ func zipifyPages(pagesData []PageData) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		name := fmt.Sprintf("%v_%v%v_%v.zip", i, pageData.Timestamp, refinedUrl.Hostname(), refinedUrl.Path) // <idx>_<hostname><path>_<timestamp>
-		zipfInternalWriter, err := zipf.Create(name)
+		name := fmt.Sprintf("%v_%v_%v.zip", i, pageData.Timestamp, refinedUrl.Hostname()) // <idx>_<hostname><path>_<timestamp>
 		if err != nil {
 			return nil, err
 		}
 
-		zipfInternal := zip.NewWriter(zipfInternalWriter)
-		htmlWriter, err := zipfInternal.Create("index.html")
+		zipfNested, err := zipf.Create(name)
 		if err != nil {
 			return nil, err
 		}
-		htmlWriter.Write([]byte(pageData.Data))
+		zipfNestedW := zip.NewWriter(zipfNested)
 
+		htmlWriter, err := zipfNestedW.Create("index.html")
+		if err != nil {
+			return nil, err
+		}
+		_, err = htmlWriter.Write([]byte(pageData.Data))
+		if err != nil {
+			panic(err)
+		}
 		// fmt.Printf("A: %v\n", pageData)
 
 		for _, media := range pageData.Media {
-			fmt.Println(media.Name)
-			fileWriter, err := zipfInternal.Create(media.Name)
+			if media.Name == "" {
+				panic("Empty name")
+			}
+			fileWriter, err := zipfNestedW.Create(media.Name)
 			if err != nil {
 				return nil, err
 			}
-			fileWriter.Write(media.Data)
+			_, err = fileWriter.Write([]byte(media.Data))
+			if err != nil {
+				panic(err)
+			}
 		}
 
-		zipfInternal.Close()
+		err = zipfNestedW.Close()
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	zipf.Close()
+	err := zipf.Close()
+	if err != nil {
+		return nil, err
+	}
 
 	return buffer.Bytes(), nil
 }
