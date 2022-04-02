@@ -153,24 +153,26 @@ type DbContext struct {
 	Mut              sync.Mutex
 }
 
-func insertMedia(name string, data []byte, db *sql.DB) (int, error) {
+func insertMedia(data []byte, db *sql.DB) (int, string, error) {
 	hash := sha256.Sum256(data)
 	hash_ := make([]byte, 0, len(hash))
 	for _, v := range hash {
 		hash_ = append(hash_, v)
 	}
 
-	query := `select id from media where hash = ?`
+	query := `select id, name from media where hash = ?`
 	row := db.QueryRow(query, hash_)
 
 	var mediaId int
-	err := row.Scan(&mediaId)
+	var mediaFilename string
+	err := row.Scan(&mediaId, &mediaFilename)
 	if err != nil {
 		if err == sql.ErrNoRows {
+			mediaFilename = nameGenerator.Get()
 			query := `insert into media (name, hash, data) values (?, ?, ?)`
-			_, err := db.Exec(query, name, hash_, data)
+			_, err := db.Exec(query, mediaFilename, hash_, data)
 			if err != nil {
-				return 0, err
+				return 0, "", err
 			}
 
 			mediaId, err := getLastAutoincrementIndex(db)
@@ -178,12 +180,12 @@ func insertMedia(name string, data []byte, db *sql.DB) (int, error) {
 				panic(err)
 			}
 
-			return mediaId, nil
+			return mediaId, mediaFilename, nil
 		} else {
-			return 0, err
+			return 0, "", err
 		}
 	} else {
-		return mediaId, nil
+		return mediaId, mediaFilename, nil
 	}
 }
 
@@ -208,14 +210,11 @@ func parseHtml(node *html.Node, rootUrl string, pageId int, db *sql.DB, alreadyR
 
 					data, err := httpGet(mediaUrl)
 					if err == nil {
-
-						filename := nameGenerator.Get()
-						node.Attr[attr_i].Val = filename
-
-						mediaId, err := insertMedia(filename, []byte(data), db)
+						mediaId, mediaFilename, err := insertMedia([]byte(data), db)
 						if err != nil {
 							return err
 						}
+						node.Attr[attr_i].Val = mediaFilename
 
 						_, ok := alreadyRelated[MediaPage{mediaId, pageId}]
 						if !ok {
