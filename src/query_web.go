@@ -79,7 +79,12 @@ func initialize(connectionString string) (Config, DbContext, error) {
 
 	config.UrlJobs = validJobs
 
-	if config.EraseStorageOnStartup {
+	exists, err := fileExists("storage.db")
+	if err != nil {
+		panic(err)
+	}
+
+	if config.EraseStorageOnStartup && exists {
 		err := os.Remove("storage.db")
 		if err != nil {
 			panic(err)
@@ -194,52 +199,72 @@ type MediaPage struct {
 	PageId  int
 }
 
-func parseHtml(node *html.Node, rootUrl string, pageId int, db *sql.DB, alreadyRelated map[MediaPage]bool) error {
+type HtmlParsingContext struct {
+	RootUrl        string
+	PageId         int
+	Db             *sql.DB
+	AlreadyRelated map[MediaPage]bool
+}
+
+func processMediaLink(ctx *HtmlParsingContext, node *html.Node, attr_i int) error {
+	attr := &node.Attr[attr_i]
+
+	var mediaUrl string
+	if strings.HasPrefix(attr.Val, "http://") || strings.HasPrefix(attr.Val, "https://") {
+		mediaUrl = attr.Val
+	} else {
+		mediaUrl = ctx.RootUrl + attr.Val
+	}
+
+	data, err := httpGet(mediaUrl)
+	if err != nil {
+		return err
+	}
+	mediaId, mediaFilename, err := insertMedia([]byte(data), ctx.Db)
+	if err != nil {
+		return err
+	}
+	attr.Val = mediaFilename
+
+	_, ok := ctx.AlreadyRelated[MediaPage{mediaId, ctx.PageId}]
+	if !ok {
+		query := `INSERT INTO media_web_pages (media_id, web_page_id) VALUES (?, ?)`
+		_, err = ctx.Db.Exec(query, mediaId, ctx.PageId)
+		if err != nil {
+			fmt.Println(err)
+			return err
+		}
+
+		ctx.AlreadyRelated[MediaPage{mediaId, ctx.PageId}] = true
+	}
+	return nil
+}
+
+func parseHtml(ctx *HtmlParsingContext, node *html.Node) error {
 	if node.Type == html.ElementNode {
 		if node.Data == "img" || node.Data == "script" {
 			for attr_i, attr := range node.Attr {
 				if attr.Key == "src" {
-					var mediaUrl string
-					if strings.HasPrefix(attr.Val, "http://") || strings.HasPrefix(attr.Val, "https://") {
-						mediaUrl = attr.Val
-					} else {
-						mediaUrl = rootUrl + attr.Val
-					}
-
-					log.Printf("%v", mediaUrl)
-
-					data, err := httpGet(mediaUrl)
-					if err == nil {
-						mediaId, mediaFilename, err := insertMedia([]byte(data), db)
-						if err != nil {
-							return err
-						}
-						node.Attr[attr_i].Val = mediaFilename
-
-						_, ok := alreadyRelated[MediaPage{mediaId, pageId}]
-						if !ok {
-							query := `INSERT INTO media_web_pages (media_id, web_page_id) VALUES (?, ?)`
-							_, err = db.Exec(query, mediaId, pageId)
-							if err != nil {
-								fmt.Println(err)
-								return err
-							}
-
-							alreadyRelated[MediaPage{mediaId, pageId}] = true
-						}
-					} else {
-						log.Printf("Failed to get %v. Node will be left unparsed", mediaUrl)
-
+					err := processMediaLink(ctx, node, attr_i)
+					if err != nil {
+						return err
 					}
 				}
 			}
 		} else if node.Data == "link" {
-
+			for attr_i, attr := range node.Attr {
+				if attr.Key == "icon" || attr.Key == "stylesheet" {
+					err := processMediaLink(ctx, node, attr_i)
+					if err != nil {
+						return err
+					}
+				}
+			}
 		}
 	}
 
 	for c := node.FirstChild; c != nil; c = c.NextSibling {
-		err := parseHtml(c, rootUrl, pageId, db, alreadyRelated)
+		err := parseHtml(ctx, c)
 		if err != nil {
 			return err
 		}
@@ -282,8 +307,9 @@ func queryAndSaveWebUrl(urlString string, dbContext *DbContext) error {
 		panic(err)
 	}
 
-	alreadyRelated := make(map[MediaPage]bool)
-	err = parseHtml(root, rootUrl, pageId, db, alreadyRelated)
+	htmlCtx := HtmlParsingContext{RootUrl: rootUrl, PageId: pageId, Db: db, AlreadyRelated: make(map[MediaPage]bool)}
+
+	err = parseHtml(&htmlCtx, root)
 	if err != nil {
 		return err
 	}

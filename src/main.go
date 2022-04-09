@@ -47,7 +47,7 @@ func main() {
 
 	app := fiber.New()
 
-	app.Get("/data/:protocol/:domain/:from/:to", func(c *fiber.Ctx) error {
+	app.Get("/data/:protocol/:domain/:from/:to?", func(c *fiber.Ctx) error {
 		log.Println("Request incoming")
 
 		protocol := c.Params("protocol")
@@ -56,7 +56,7 @@ func main() {
 		from := c.Params("from")
 		to := c.Params("to")
 		var argsPresent bool
-		if url == "" || from == "" || to == "" {
+		if url == "" || from == "" {
 			argsPresent = false
 		} else {
 			argsPresent = true
@@ -65,44 +65,52 @@ func main() {
 		from = strings.ReplaceAll(from, "_", " ")
 		to = strings.ReplaceAll(to, "_", " ")
 
-		if argsPresent {
-			correctArgs := true
+		if !argsPresent {
+			log.Printf("User provided incorrect arguments")
+			return c.SendStatus(400)
+		}
 
+		correctArgs := true
+
+		var fromVal time.Time
+		var toVal time.Time
+		if from == "all" {
+			fromVal = time.Unix(0, 0)
+			toVal = time.Unix(9223372036854775807, 0)
+		} else {
 			layout := time.ANSIC
-			fromVal, err := time.Parse(layout, from)
+			fromVal, err = time.Parse(layout, from)
 			if err != nil {
 				log.Printf("Incorrect \"from\" argument: %v. Error: %v ", from, err)
 				correctArgs = false
 			}
-			toVal, err := time.Parse(layout, to)
+			toVal, err = time.Parse(layout, to)
 			if err != nil {
 				log.Printf("Incorrect \"to\" argument: %v. Error: %v ", to, err)
 				correctArgs = false
 			}
-			log.Printf("Request: %v from %v (%v) to %v (%v)", url, fromVal.UTC(), fromVal.UTC().UnixNano(), toVal.UTC(), toVal.UTC().UnixNano())
 
-			if correctArgs {
-				pages, err := queryUrlDataInRange(&dbContext, url, fromVal, toVal)
-				if err == nil {
-					buf, err := zipifyPages(pages)
-					if err == nil {
-						c.Send(buf)
-						log.Printf("Sent %v bytes to the user", len(buf))
-					} else {
-						log.Printf("Zipping failed: %v", err)
-						c.SendStatus(500)
-					}
-				} else {
-					log.Printf("Data query failed: %v", err)
-					return c.SendStatus(500)
-				}
-			} else {
-				log.Printf("User provided incorrect arguments")
+			if !correctArgs {
+				log.Printf("User didn't provide required arguments")
 				return c.SendStatus(400)
-			}
+			}	
+		}
+
+		log.Printf("Request: %v from %v (%v) to %v (%v)", url, fromVal.UTC(), fromVal.UTC().UnixNano(), toVal.UTC(), toVal.UTC().UnixNano())
+
+		pages, err := queryUrlDataInRange(&dbContext, url, fromVal, toVal)
+		if err != nil {
+			log.Printf("Data query failed: %v", err)
+			return c.SendStatus(500)
+		}
+
+		buf, err := zipifyPages(pages)
+		if err == nil {
+			c.Send(buf)
+			log.Printf("Sent %v bytes to the user", len(buf))
 		} else {
-			log.Printf("User didn't provide required arguments")
-			return c.SendStatus(400)
+			log.Printf("Zipping failed: %v", err)
+			c.SendStatus(500)
 		}
 
 		if err != nil {

@@ -6,6 +6,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"io/ioutil"
 	"net/http"
+	"os"
 	// "github.com/mattn/go-sqlite3"
 )
 
@@ -45,4 +46,15 @@ func getLastAutoincrementIndex(db *sql.DB) (int, error) {
 	}
 
 	return id, nil
+}
+
+func fileExists(path string) (bool, error) {
+	_, err := os.Stat(path)
+	if err == nil {
+		return true, nil
+	}
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	return false, err
 }
