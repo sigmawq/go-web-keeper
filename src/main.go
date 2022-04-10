@@ -9,18 +9,6 @@ import (
 	"time"
 )
 
-// TODO
-// 1. Image loading
-// 2. Scripts
-// 3. HTTP server to serve thing
-// 4. Database for scripts and image loading
-
-// NOTE which tags to parse and extract links
-// <img> for images
-// <link> for linked CSS
-// <script> for scripts
-// ...
-
 func main() {
 	fmt.Println("Web Keeper.")
 
@@ -76,7 +64,7 @@ func main() {
 		var toVal time.Time
 		if from == "all" {
 			fromVal = time.Unix(0, 0)
-			toVal = time.Unix(9223372036854775807, 0)
+			toVal = time.Unix(2147483647, 0)
 		} else {
 			layout := time.ANSIC
 			fromVal, err = time.Parse(layout, from)
@@ -93,7 +81,7 @@ func main() {
 			if !correctArgs {
 				log.Printf("User didn't provide required arguments")
 				return c.SendStatus(400)
-			}	
+			}
 		}
 
 		log.Printf("Request: %v from %v (%v) to %v (%v)", url, fromVal.UTC(), fromVal.UTC().UnixNano(), toVal.UTC(), toVal.UTC().UnixNano())
@@ -125,5 +113,5 @@ func main() {
 		return nil
 	})
 
-	app.Listen(":3000")
+	app.Listen(fmt.Sprintf(":%v", config.Port))
 }
