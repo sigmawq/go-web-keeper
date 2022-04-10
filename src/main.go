@@ -113,5 +113,7 @@ func main() {
 		return nil
 	})
 
+	go readInput(&dbContext)
+
 	app.Listen(fmt.Sprintf(":%v", config.Port))
 }
