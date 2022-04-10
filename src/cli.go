@@ -77,7 +77,7 @@ func readInput(dbContext *DbContext) {
 		}
 
 		if input == "exit" || input == "kill" {
-			return
+			os.Exit(0)
 		}
 
 		tokens := strings.Split(input, "")
