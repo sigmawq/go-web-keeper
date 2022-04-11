@@ -1,0 +1,18 @@
+{
+	"url_jobs": [
+	{
+		"url": "http://www.google.com",
+		"query_period_seconds": 60,
+		"retry_period_seconds": 10
+	},
+	{
+		"url": "http://news.google.com",
+		"query_period_seconds": 10,
+		"retry_period_seconds": 5
+	}
+	],
+	"erase_storage_on_startup": true,
+	"server": {
+		"port": 3000
+	}
+}
