@@ -24,11 +24,6 @@ func main() {
 		fmt.Printf("%v. %v (%vs/%vs)\n", i, urlJob.Url, urlJob.QueryPeriodSeconds, urlJob.RetryPeriodSeconds)
 	}
 
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-
 	for i, urlJob := range config.UrlJobs {
 		go queryAndStoreRoutine(i, urlJob, &dbContext)
 	}

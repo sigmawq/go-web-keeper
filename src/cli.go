@@ -19,12 +19,12 @@ type DataRequest struct {
 func parseInput(tokens []string) (bool, DataRequest) {
 	minLen := 3
 	if len(tokens) < minLen {
-		fmt.Printf("Get data in range: GetData <url> <from> <to>\nGet data all: GetData <url> <all>")
+		fmt.Printf("Get data in range: GetData <url> <from> <to>\nGet data all: GetData <url> <all>\n")
 		return false, DataRequest {}
 	}
 
 	if tokens[0] != "GetData" {
-		fmt.Printf("Unrecognized command: %v", tokens[0])
+		fmt.Printf("Unrecognized command: %v\n", tokens[0])
 		return false, DataRequest {}
 	} 
 
@@ -80,7 +80,7 @@ func readInput(dbContext *DbContext) {
 			os.Exit(0)
 		}
 
-		tokens := strings.Split(input, "")
+		tokens := strings.Split(input, " ")
 
 		parsed, request := parseInput(tokens) 
 

@@ -23,8 +23,8 @@ Option 2 - HTTP Get.
 *   Get all data: `curl -o filename.zip "address:port/data/protocol/URL/all"`
 
 ## Date format
-There is a specific format for all dates used in web keeper: Mon Jan _2 15:04:05 2006
-Date is given as a specific timestamp: `Mon Jan 2 15:04:05 MST 2006` (Same as golang `time` package does)
+There is a specific format for all dates used in web keeper: `Mon Jan _2 15:04:05 2006`
+(Date is given as a specific timestamp: `Mon Jan 2nd 15:04:05 MST 2006`) (Same as in golang `time` package does)
 
 ## License
 [MIT](https://choosealicense.com/licenses/mit/)

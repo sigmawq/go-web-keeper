@@ -233,7 +233,6 @@ func processMediaLink(ctx *HtmlParsingContext, node *html.Node, attr_i int) erro
 		query := `INSERT INTO media_web_pages (media_id, web_page_id) VALUES (?, ?)`
 		_, err = ctx.Db.Exec(query, mediaId, ctx.PageId)
 		if err != nil {
-			fmt.Println(err)
 			return err
 		}
 
@@ -327,7 +326,6 @@ func queryAndSaveWebUrl(urlString string, dbContext *DbContext) error {
 	timestamp := strconv.FormatInt(time.Now().UTC().UnixNano(), 10)
 	_, err = db.Exec(query, pageId, textModified.Bytes(), timestamp)
 	if err != nil {
-		fmt.Println(err)
 		return err
 	}
 
