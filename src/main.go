@@ -115,5 +115,9 @@ func main() {
 
 	go readInput(&dbContext)
 
-	app.Listen(fmt.Sprintf(":%v", config.Port))
+	if config.SetupServer {
+		app.Listen(fmt.Sprintf(":%v", config.Port))	
+	} else {
+		select{}
+	}
 }

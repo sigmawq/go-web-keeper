@@ -20,6 +20,7 @@ import (
 type Config struct {
 	UrlJobs               []UrlJob `json:"url_jobs"`
 	EraseStorageOnStartup bool     `json:"erase_storage_on_startup"`
+	SetupServer 		bool 	`json:"server"`
 	Port                  int      `json:"port"`
 }
 

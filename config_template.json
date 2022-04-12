@@ -12,7 +12,6 @@
 	}
 	],
 	"erase_storage_on_startup": true,
-	"server": {
-		"port": 3000
-	}
+	"server": true,
+	"port": 3000
 }
